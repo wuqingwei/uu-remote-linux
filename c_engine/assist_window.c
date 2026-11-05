@@ -652,7 +652,8 @@ static gboolean apply_qr(gpointer data) {
 void uu_login_ui_set_qr(const unsigned char *rgba, int edge) {
     if (!ui_started || init_state != 1 || atomic_load(&closed) || edge <= 0) return;
     QrUpdate *u = g_new(QrUpdate, 1);
-    u->rgba = g_memdup2(rgba, (gsize)edge * edge * 4); u->edge = edge;
+    /* g_memdup2 needs GLib >= 2.68; Ubuntu 20.04 ships 2.64, so duplicate manually. */
+    u->rgba = memcpy(g_malloc((gsize)edge * edge * 4), rgba, (gsize)edge * edge * 4); u->edge = edge;
     g_idle_add(apply_qr, u);
 }
 static gboolean apply_login_status(gpointer data) {
