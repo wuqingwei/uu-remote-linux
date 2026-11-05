@@ -15,6 +15,11 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ubuntu:20.04
+    # Otherwise apt's tzdata configuration prompts for a time zone and
+    # the Install build dependencies step hangs waiting for input.
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: Etc/UTC
     steps:
       - name: Install git and curl (not in the base image)
         run: |
