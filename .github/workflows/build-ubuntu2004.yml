@@ -79,7 +79,13 @@ jobs:
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
       - name: Debian package
         run: |
-          packaging/deb/build-deb.sh "${GITHUB_REF_NAME#v}" target/release .
+          # release.yml passes ${GITHUB_REF_NAME#v}, which is a tag like
+          # v0.2.50 there. This workflow is dispatched from a branch, so
+          # GITHUB_REF_NAME is "main" -- not a valid Debian version
+          # (dpkg-deb: version number does not start with digit). Take
+          # the version from Cargo.toml instead.
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          packaging/deb/build-deb.sh "$version" target/release .
           deb=$(ls uu-remote-linux_*.deb)
           sha256sum "$deb" > "$deb.sha256"
           apt-get install -y "./$deb"
