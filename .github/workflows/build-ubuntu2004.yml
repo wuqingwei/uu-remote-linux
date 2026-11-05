@@ -27,7 +27,10 @@ jobs:
           apt-get install -y build-essential pkg-config dpkg-dev \
             libx11-dev libxext-dev libxtst-dev libxfixes-dev libgtk-3-dev libsdl2-dev \
             libwayland-dev libwayland-bin libxkbcommon-dev \
-            libglib2.0-dev libpipewire-0.3-dev ffmpeg
+            libglib2.0-dev ffmpeg
+            # No libpipewire-0.3-dev on focal: that package does not exist in
+            # Ubuntu 20.04. The portal plugin is skipped anyway (no libei),
+            # and build.rs only warns when PipeWire/libei are missing.
       - name: Install Rust toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
