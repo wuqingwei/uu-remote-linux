@@ -170,7 +170,11 @@ fn shared_engine(name: &str, sources: &[&str], includes: &[&std::path::Path], cf
     let mut command = cc::Build::new().pic(true).opt_level(2).get_compiler().to_command();
     command.args(["-shared", "-fPIC", "-Wno-unused-parameter", "-Wl,-z,defs"]).arg(format!("-Wl,-soname,{name}")).arg("-o").arg(&library);
     for include in includes { command.arg("-I").arg(include); }
-    command.args(cflags.split_whitespace()).args(sources).args(libs.split_whitespace()).arg("-lpthread");
+    // -ldl: wayland_engine.c uses dlopen/dlsym/dlclose. On glibc >= 2.34 those
+    // live in libc, but on glibc 2.31 (Ubuntu 20.04) libdl is a separate
+    // library, and -Wl,-z,defs above turns the missing symbols into a link
+    // error. Linking -ldl explicitly is harmless on newer glibc.
+    command.args(cflags.split_whitespace()).args(sources).args(libs.split_whitespace()).args(["-lpthread", "-ldl"]);
     let status = command.status().expect("C compiler for the engine plugin");
     assert!(status.success(), "building {name} failed");
     // OUT_DIR = target/<profile>/build/<package>-<hash>/out
