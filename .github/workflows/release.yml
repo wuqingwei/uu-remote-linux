@@ -84,9 +84,88 @@ jobs:
             uu-remote-linux-*.tar.gz*
             uu-remote-linux_*.deb*
 
+  # Ubuntu 20.04 (glibc 2.31) build: server + Wayland plugin only.
+  # GitHub's ubuntu-20.04 runner is retired, so this runs in an
+  # ubuntu:20.04 container on a 24.04 runner. No portal plugin (focal
+  # has no libei >= 1.1; build.rs skips it with a warning) and no
+  # viewer (sdl2 0.37 needs SDL >= 2.0.18, focal ships 2.0.10).
+  build-ubuntu2004:
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:20.04
+    # Otherwise apt's tzdata configuration prompts for a time zone and
+    # the Install build dependencies step hangs waiting for input.
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: Etc/UTC
+    steps:
+      - name: Install git and curl (not in the base image)
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates curl git
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential pkg-config dpkg-dev \
+            libx11-dev libxext-dev libxtst-dev libxfixes-dev libgtk-3-dev libsdl2-dev \
+            libwayland-dev libwayland-bin libxkbcommon-dev \
+            libglib2.0-dev ffmpeg
+            # No libpipewire-0.3-dev on focal: that package does not exist in
+            # Ubuntu 20.04. The portal plugin is skipped anyway (no libei),
+            # and build.rs only warns when PipeWire/libei are missing.
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - run: cargo test --release --locked
+      - name: Build release feature set (no portal plugin on focal)
+        run: |
+          cargo build --release --locked --features wayland,portal,engine-plugins
+          test -f target/release/libuu-wayland.so
+          test ! -f target/release/libuu-portal.so
+      # No viewer on focal: sdl2 0.37 needs SDL >= 2.0.18, focal has 2.0.10.
+      - name: Verify glibc ceiling and binary
+        run: |
+          file target/release/uuremote-server
+          # Nothing may require a glibc symbol newer than focal's 2.31.
+          if readelf --version-info target/release/uuremote-server 2>/dev/null | grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])' ; then
+            echo "binary requires glibc newer than 2.31" >&2; exit 1
+          fi
+          ./target/release/uuremote-server --help | head -1
+          ! readelf -d target/release/uuremote-server | grep NEEDED | grep -E 'libei|libpipewire|libwayland-client|libxkbcommon'
+      - name: Package tarball
+        run: |
+          name=uu-remote-linux-${GITHUB_REF_NAME}-x86_64-linux-ubuntu2004
+          mkdir -p "$name"
+          cp target/release/uuremote-server target/release/libuu-wayland.so \
+            packaging/tarball/install.sh LICENSE README.md README.en.md config.example.json "$name/"
+          cp -r contrib "$name/"
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Debian package
+        run: |
+          # The 22.04 x86_64 job produces a deb with the same name, so
+          # rename this one to keep both in the release. The version
+          # comes from Cargo.toml: on a tag the ref name would work, but
+          # the workflow is also dispatched from branches in testing.
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          packaging/deb/build-deb.sh "$version" target/release .
+          deb=$(ls uu-remote-linux_*.deb)
+          apt-get install -y "./$deb"
+          uuremote-server --help | head -1
+          mv "$deb" "${deb%.deb}-ubuntu2004.deb"
+          sha256sum "${deb%.deb}-ubuntu2004.deb" > "${deb%.deb}-ubuntu2004.deb.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-ubuntu2004
+          path: |
+            uu-remote-linux-*-ubuntu2004.tar.gz*
+            uu-remote-linux_*.deb*
+
   # One publisher, so the matrix legs never race to create the release.
   release:
-    needs: build
+    needs: [build, build-ubuntu2004]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
