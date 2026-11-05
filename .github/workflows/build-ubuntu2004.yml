@@ -5,6 +5,15 @@ name: Build Ubuntu 20.04
 # ubuntu:20.04 container on a 24.04 runner, like the release job but
 # without the portal plugin: focal has no libei >= 1.1, and build.rs
 # already skips libuu-portal.so with a warning in that case.
+# Also without the viewer: the sdl2 crate (0.37) needs SDL >= 2.0.18,
+# but focal ships SDL 2.0.10, so linking uuremote-viewer fails on
+# SDL_GameControllerHasRumble, SDL_SetWindowKeyboardGrab and
+# SDL_Metal_DestroyView. Linking against a newer SDL built from source
+# would only move the failure to runtime on a stock 20.04 machine
+# (keyboard grab and gamepad rumble are actually called by the viewer),
+# so the 20.04 package is server-only for now; the viewer still ships
+# from the 22.04 release. packaging/deb/build-deb.sh already treats the
+# viewer as optional, and the tarball step below copies it only if built.
 # Triggered manually only; it does not publish anything.
 
 on:
@@ -46,8 +55,9 @@ jobs:
           cargo build --release --locked --features wayland,portal,engine-plugins
           test -f target/release/libuu-wayland.so
           test ! -f target/release/libuu-portal.so
-      - name: Build viewer
-        run: cargo build --release --locked --features native-viewer,viewer-sdl --bin uuremote-viewer
+      # No viewer on focal: sdl2 0.37 needs SDL >= 2.0.18, focal has 2.0.10
+      # (see the header comment). The server + libuu-wayland.so are the
+      # 20.04 deliverables; the viewer keeps shipping from the 22.04 job.
       - name: Verify glibc ceiling and binary
         run: |
           file target/release/uuremote-server
@@ -61,8 +71,9 @@ jobs:
         run: |
           name=uu-remote-linux-${GITHUB_REF_NAME}-x86_64-linux-ubuntu2004
           mkdir -p "$name"
-          cp target/release/uuremote-server target/release/uuremote-viewer target/release/libuu-wayland.so \
+          cp target/release/uuremote-server target/release/libuu-wayland.so \
             packaging/tarball/install.sh LICENSE README.md README.en.md config.example.json "$name/"
+          [ -f target/release/uuremote-viewer ] && cp target/release/uuremote-viewer "$name/"
           cp -r contrib "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
