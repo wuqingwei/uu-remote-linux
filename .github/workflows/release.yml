@@ -182,22 +182,8 @@ jobs:
             uu-remote-linux_*.deb
             uu-remote-linux_*.deb.sha256
 
-  # Headless NAS image (docker/), built from the release tarball published by the job above.
-  docker:
-    needs: release
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: docker
-          build-args: VERSION=${{ github.ref_name }}
-          push: true
-          tags: |
-            ghcr.io/vallierdev/uu-remote-linux:${{ github.ref_name }}
-            ghcr.io/vallierdev/uu-remote-linux:latest
+  # NOTE (fork): the docker job that used to follow here was removed.
+  # It pushed to ghcr.io/vallierdev/uu-remote-linux, which this fork has
+  # no permission to write to, so every release failed at that step even
+  # though the release itself was already published. The image can still
+  # be built locally from docker/ (see docs/deploy-nas-docker.md).
